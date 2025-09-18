@@ -9,6 +9,11 @@ import 'package:intl/intl.dart';
 import 'package:juantap/pages/users/view_alert_location.dart';
 import 'package:vibration/vibration.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:juantap/pages/users/self_defense_guide.dart';
+import 'package:juantap/pages/users/sos_service.dart';
+import 'package:juantap/pages/users/voice_command_settings.dart';
+
+
 
 
 
@@ -49,6 +54,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _listenToContactRequests();
     _listenToSosAlerts();
   }
+
   AudioPlayer? player;
 
   void _listenToSosAlerts() {
@@ -64,6 +70,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       final lat = (data['lat'] as num).toDouble();
       final lng = (data['lng'] as num).toDouble();
       final alertSenderId = event.snapshot.key ?? 'unknown';
+
+      // ✅ 24-hour filter
+      final timestampStr = data['timestamp'];
+      DateTime alertTime;
+      if (timestampStr != null) {
+        alertTime = DateTime.tryParse(timestampStr) ?? DateTime.now();
+      } else {
+        alertTime = DateTime.now();
+      }
+
+      final now = DateTime.now();
+      if (now.difference(alertTime).inHours >= 24) {
+        debugPrint("⏰ Ignored old alert from $username (older than 24h)");
+        return; // skip old alert
+      }
 
       // Start custom vibration loop
       if (await Vibration.hasVibrator() ?? false) {
@@ -457,65 +478,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ],
     );
   }
+
   Future<void> sendSosAlert() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      final uid = user.uid;
-      final userRef = FirebaseDatabase.instance.ref('users/$uid');
-      final contactsRef = FirebaseDatabase.instance.ref('contacts/$uid');
-      final sosRef = FirebaseDatabase.instance.ref('sos_alerts');
-      final responderAlertRef = FirebaseDatabase.instance.ref('responder_alerts');
-
-      final userSnapshot = await userRef.get();
-      if (!userSnapshot.exists) return;
-
-      final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
-      final username = userData['username'] ?? 'Unknown';
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
-
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-
-      final contactsSnapshot = await contactsRef.get();
-      if (contactsSnapshot.exists) {
-        final contacts = Map<String, dynamic>.from(contactsSnapshot.value as Map);
-        for (final contactId in contacts.keys) {
-          await sosRef.child(contactId).child(uid).child('location').set({
-            'username': username,
-            'timestamp': DateTime.now().toIso8601String(),
-            'lat': position.latitude,
-            'lng': position.longitude,
-          });
-        }
-      }
-
-      // Send to responders
-      final newResponderRef = FirebaseDatabase.instance.ref('responder_alerts').push();
-      await newResponderRef.set({
-        'location': {
-          'lat': position.latitude,
-          'lng': position.longitude,
-          'timestamp': DateTime.now().toIso8601String(),
-          'userId': uid,
-          'username': username,
-        }
-      });
-
-
+    await SOSService.sendSosAlert();
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('🚨 SOS sent successfully'), backgroundColor: Colors.redAccent),
+        const SnackBar(
+          content: Text('🚨 SOS sent successfully'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
-    } catch (e) {
-      print('❌ Error sending SOS: $e');
     }
   }
-
 
   void _confirmAndSendSOS() {
     int secondsLeft = 5;
@@ -691,6 +665,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             onTap: () => Navigator.pushNamed(context, '/edit_profile'),
           ),
           const Divider(color: Colors.white54),
+
+          ListTile(
+            leading: const Icon(Icons.shield, color: Colors.white),
+            title: const Text('Self-Defense Guides', style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context); // close the drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SelfDefenseGuidePage()),
+              );
+            },
+          ),
+
+          ListTile(
+            leading: const Icon(Icons.mic, color: Colors.white),
+            title: const Text('Voice Command Settings', style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context); // close the drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VoiceCommandSettings()),
+              );
+            },
+          ),
+
+
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.white),
             title: const Text('Logout', style: TextStyle(color: Colors.white)),

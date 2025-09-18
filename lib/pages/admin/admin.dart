@@ -6,6 +6,7 @@ import 'analytics.dart';
 import 'incidents.dart';
 import 'package:juantap/pages/users/login.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'upload_self_defense.dart';
 
 class admin extends StatefulWidget {
   const admin({super.key});
@@ -16,15 +17,49 @@ class admin extends StatefulWidget {
 
 class _adminState extends State<admin> {
   List<String> recentLocations = [];
+  List<String> topReportedLocations = [];
   List<int> monthlyCounts = List.filled(12, 0);
   Set<int> availableYears = {};
   int selectedYear = DateTime.now().year;
+
+  // ✅ New state for month filter & summary
+  int selectedMonth = DateTime.now().month;
+  int sosCount = 0;
+  int activeUsers = 0;
 
   @override
   void initState() {
     super.initState();
     fetchRecentLocations();
     fetchAvailableYears();
+    fetchTopReportedLocations();
+    fetchMonthlySOSAndUsers(selectedYear, selectedMonth); // ✅ initialize
+  }
+
+  void fetchTopReportedLocations() async {
+    final dbRef = FirebaseDatabase.instance.ref("responder_reports");
+    final snapshot = await dbRef.get();
+
+    Map<String, int> locationCounts = {};
+
+    for (var userEntry in snapshot.children) {
+      for (var report in userEntry.children) {
+        final location = report.child("location").value?.toString();
+        if (location != null && location.isNotEmpty) {
+          locationCounts[location] = (locationCounts[location] ?? 0) + 1;
+        }
+      }
+    }
+
+    final sortedLocations = locationCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    setState(() {
+      topReportedLocations = sortedLocations
+          .take(3)
+          .map((e) => "${e.key} (${e.value} reports)")
+          .toList();
+    });
   }
 
   void fetchRecentLocations() async {
@@ -114,6 +149,40 @@ class _adminState extends State<admin> {
     });
   }
 
+  // ✅ Fetch monthly SOS count and active users
+  void fetchMonthlySOSAndUsers(int year, int month) async {
+    final dbRef = FirebaseDatabase.instance.ref("responder_reports");
+    final snapshot = await dbRef.get();
+
+    int sosCounter = 0;
+    Set<String> uniqueUsers = {};
+
+    for (var userEntry in snapshot.children) {
+      for (var report in userEntry.children) {
+        final rawDate = report.child("date").value?.toString();
+        final cleanedDate = rawDate?.replaceAll('"', '').trim();
+
+        if (cleanedDate != null && cleanedDate.contains("/")) {
+          final parts = cleanedDate.split("/");
+          if (parts.length >= 3) {
+            final reportMonth = int.tryParse(parts[0]) ?? 0;
+            final reportYear = int.tryParse(parts[2]) ?? 0;
+
+            if (reportMonth == month && reportYear == year) {
+              sosCounter++;
+              uniqueUsers.add(userEntry.key ?? "");
+            }
+          }
+        }
+      }
+    }
+
+    setState(() {
+      sosCount = sosCounter;
+      activeUsers = uniqueUsers.length;
+    });
+  }
+
   void _logout() async {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
@@ -189,6 +258,7 @@ class _adminState extends State<admin> {
         if (newYear != null) {
           setState(() => selectedYear = newYear);
           fetchMonthlyReportCounts(newYear);
+          fetchMonthlySOSAndUsers(newYear, selectedMonth); // ✅ update summary
         }
       },
       items: sortedYears.map((year) {
@@ -197,6 +267,34 @@ class _adminState extends State<admin> {
           child: Text('$year'),
         );
       }).toList(),
+    );
+  }
+
+  // ✅ Month dropdown
+  Widget _buildMonthDropdown() {
+    const months = [
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+    ];
+
+    return DropdownButton<int>(
+      dropdownColor: Colors.teal[800],
+      value: selectedMonth,
+      style: const TextStyle(color: Colors.white),
+      iconEnabledColor: Colors.white,
+      underline: const SizedBox(),
+      onChanged: (int? newMonth) {
+        if (newMonth != null) {
+          setState(() => selectedMonth = newMonth);
+          fetchMonthlySOSAndUsers(selectedYear, newMonth);
+        }
+      },
+      items: List.generate(12, (index) {
+        return DropdownMenuItem(
+          value: index + 1,
+          child: Text(months[index]),
+        );
+      }),
     );
   }
 
@@ -258,37 +356,7 @@ class _adminState extends State<admin> {
               decoration: const BoxDecoration(
                 color: Color(0xFF2A9D8F),
               ),
-              accountName: GestureDetector(
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) {
-                      final nameController = TextEditingController(text: "Admin");
-                      return AlertDialog(
-                        title: const Text("Edit Name"),
-                        content: TextField(
-                          controller: nameController,
-                          decoration: const InputDecoration(hintText: "Enter your name"),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("Cancel"),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              // Optionally: Save to Firebase
-                              Navigator.pop(context);
-                            },
-                            child: const Text("Save"),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-                child: const Text("Admin", style: TextStyle(fontSize: 18)),
-              ),
+              accountName: const Text("Admin", style: TextStyle(fontSize: 18)),
               accountEmail: const Text("admin@juantap.com"),
               currentAccountPicture: const CircleAvatar(
                 backgroundColor: Colors.white,
@@ -337,6 +405,17 @@ class _adminState extends State<admin> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const AdminAnalyticsPage()),
+                );
+              },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.shield, color: Colors.white),
+              title: const Text('Upload Self-Defense', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const UploadSelfDefenseImagesPage()),
                 );
               },
             ),
@@ -442,9 +521,17 @@ class _adminState extends State<admin> {
                       MaterialPageRoute(builder: (context) => const AdminIncidentListPage()),
                     );
                   },
-                  child: _buildSection(title: 'Incident Reports', children: [
-                    for (String loc in recentLocations)
-                      Container(
+                  child: _buildSection(
+                    title: 'Incident Reports - Top Locations',
+                    children: topReportedLocations.isEmpty
+                        ? [
+                      const Text(
+                        "No reports yet",
+                        style: TextStyle(color: Colors.white70),
+                      )
+                    ]
+                        : topReportedLocations.map((loc) {
+                      return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -455,12 +542,21 @@ class _adminState extends State<admin> {
                           children: [
                             const Icon(Icons.map_outlined, color: Colors.white70),
                             const SizedBox(width: 8),
-                            Text(loc, style: const TextStyle(color: Colors.white)),
+                            Expanded(
+                              child: Text(
+                                loc,
+                                style: const TextStyle(color: Colors.white),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ],
                         ),
-                      )
-                  ]),
+                      );
+                    }).toList(),
+                  ),
                 ),
+
                 const SizedBox(height: 20),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,24 +627,33 @@ class _adminState extends State<admin> {
                         ),
                       ]),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Text('Year: ', style: TextStyle(color: Colors.white)),
-                        _buildYearDropdown(),
-                      ],
-                    ),
+                    
                   ],
                 ),
+                const SizedBox(height: 10),
+
+// ✅ Align Year + Month dropdowns in one row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Text('Year: ', style: TextStyle(color: Colors.white)),
+                    _buildYearDropdown(),
+                    const SizedBox(width: 16),
+                    const Text('Month: ', style: TextStyle(color: Colors.white)),
+                    _buildMonthDropdown(),
+                  ],
+                ),
+
                 const SizedBox(height: 20),
+
+// ✅ Summary Cards below
                 Row(
                   children: [
-                    _summaryCard('SOS Counts', '9'),
+                    _summaryCard('SOS Counts', '$sosCount'),
                     const SizedBox(width: 12),
-                    _summaryCard('Active Users', '40/68'),
+                    _summaryCard('Active Users', '$activeUsers'),
                   ],
-                )
+                ),
               ],
             ),
           ),
