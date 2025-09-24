@@ -7,6 +7,8 @@ import 'incidents.dart';
 import 'package:juantap/pages/users/login.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'upload_self_defense.dart';
+import 'danger_zones.dart';
+
 
 class admin extends StatefulWidget {
   const admin({super.key});
@@ -343,6 +345,19 @@ class _adminState extends State<admin> {
     );
   }
 
+  Future<List<String>> fetchUserImages() async {
+    final snapshot = await FirebaseDatabase.instance.ref("users").get();
+    if (!snapshot.exists) return [];
+
+    final users = Map<String, dynamic>.from(snapshot.value as Map);
+    return users.values
+        .map((user) => (user as Map)['profileImage']?.toString() ?? "")
+        .where((url) => url.isNotEmpty)
+        .take(5) // only show 5 avatars
+        .toList();
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -393,6 +408,18 @@ class _adminState extends State<admin> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const AdminIncidentListPage()),
+                );
+              },
+            ),
+
+            // Danger Zones
+            ListTile(
+              leading: const Icon(Icons.warning, color: Colors.white),
+              title: const Text('Danger Zones', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DangerZonesPage()),
                 );
               },
             ),
@@ -501,18 +528,31 @@ class _adminState extends State<admin> {
                     );
                   },
                   child: _buildSection(title: 'Manage Users', children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: List.generate(
-                        5,
-                            (index) => const CircleAvatar(
-                          radius: 20,
-                          backgroundImage: NetworkImage('https://i.imgur.com/8Km9tLL.jpg'),
-                        ),
-                      ),
+                    FutureBuilder<List<String>>(
+                      future: fetchUserImages(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          return const Text("No users yet", style: TextStyle(color: Colors.white70));
+                        }
+
+                        final images = snapshot.data!;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: images.map((img) {
+                            return CircleAvatar(
+                              radius: 20,
+                              backgroundImage: NetworkImage(img),
+                            );
+                          }).toList(),
+                        );
+                      },
                     ),
                   ]),
                 ),
+
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: () {

@@ -56,10 +56,13 @@ class _UserDetailsPageState extends State<UserDetailsPage> {
               ),
               child: Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 40,
-                    backgroundImage:
-                    NetworkImage('https://i.imgur.com/8Km9tLL.jpg'),
+                    backgroundImage: userData?['profileImage'] != null &&
+                        userData!['profileImage'].toString().isNotEmpty
+                        ? NetworkImage(userData!['profileImage'])
+                        : const AssetImage('assets/images/user_profile.png')
+                    as ImageProvider,
                   ),
                   const SizedBox(width: 16),
                   Column(
@@ -70,49 +73,34 @@ class _UserDetailsPageState extends State<UserDetailsPage> {
                               fontWeight: FontWeight.bold, fontSize: 20)),
                       const SizedBox(height: 4),
                       const Text('Details'),
-                      Text('📞 ${userData?['phone'] ?? ''}'),
+                      Text('📞 ${userData?['phone'] ?? 'N/A'}'),
                     ],
                   )
                 ],
               ),
             ),
             const SizedBox(height: 20),
+
+            // Birthdate
             const Text('Birthdate', style: TextStyle(fontWeight: FontWeight.bold)),
-            const TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: 'Not specified',
-                enabledBorder: UnderlineInputBorder(),
-              ),
-            ),
+            Text(userData?['birthdate'] ?? 'Not specified'),
             const SizedBox(height: 12),
+
+            // Nationality
             const Text('Nationality', style: TextStyle(fontWeight: FontWeight.bold)),
-            const TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: 'Not specified',
-                enabledBorder: UnderlineInputBorder(),
-              ),
-            ),
+            Text(userData?['nationality'] ?? 'Not specified'),
             const SizedBox(height: 12),
+
+            // Email
             const Text('Email Address', style: TextStyle(fontWeight: FontWeight.bold)),
-            TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: userData?['email'] ?? 'N/A',
-                enabledBorder: const UnderlineInputBorder(),
-              ),
-            ),
+            Text(userData?['email'] ?? 'N/A'),
             const SizedBox(height: 12),
+
+            // Address
             const Text('Current Address', style: TextStyle(fontWeight: FontWeight.bold)),
-            const TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: 'Not specified',
-                enabledBorder: UnderlineInputBorder(),
-              ),
-            ),
+            Text(userData?['address'] ?? 'Not specified'),
             const SizedBox(height: 24),
+
             Center(
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(

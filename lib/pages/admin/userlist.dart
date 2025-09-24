@@ -32,6 +32,7 @@ class _UserListState extends State<userlist> {
             'id': key,
             'name': user['username'] ?? 'No Name',
             'phone': user['phone'] ?? 'No Number',
+            'profileImage': user['profileImage'] ?? '', // ✅ add this
           });
         }
       });
@@ -129,7 +130,12 @@ class _UserListState extends State<userlist> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.account_circle, size: 32),
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundImage: user['profileImage'] != null && user['profileImage']!.isNotEmpty
+                                ? NetworkImage(user['profileImage']!)
+                                : const AssetImage('assets/images/user_profile.png') as ImageProvider,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -178,6 +184,7 @@ class _UserListState extends State<userlist> {
                           ),
                         ],
                       ),
+
                     ),
                   );
                 },

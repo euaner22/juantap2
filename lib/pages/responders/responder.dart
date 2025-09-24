@@ -166,7 +166,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       player = AudioPlayer();
       try {
-        await player!.setSource(AssetSource('audio/lingling.mp3'));
+        await player!.setSource(AssetSource('audio/bomboclat.mp3'));
         await player!.setReleaseMode(ReleaseMode.loop);
         await player!.resume();
       } catch (e) {
