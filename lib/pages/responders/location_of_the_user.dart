@@ -30,7 +30,8 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
   @override
   void initState() {
     super.initState();
-    _fetchUserLocation(); // ✅ get user location from Firebase
+    _fetchUserLocation();       // ✅ initial fetch
+    _listenToUserLocation();    // ✅ new live updates
     _listenToResponderLocation();
   }
 
@@ -60,8 +61,30 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
     }
   }
 
+  // ✅ NEW: listen to live user location changes
+  void _listenToUserLocation() {
+    final ref = FirebaseDatabase.instance.ref("responder_alerts/${widget.alertId}/location");
 
+    ref.onValue.listen((event) {
+      if (!event.snapshot.exists) return;
 
+      final location = Map<String, dynamic>.from(event.snapshot.value as Map);
+
+      final lat = (location['lat'] as num?)?.toDouble();
+      final lng = (location['lng'] as num?)?.toDouble();
+
+      if (lat != null && lng != null) {
+        setState(() {
+          _userLocation = LatLng(lat, lng);
+          _username = location['username'] ?? "Unknown User";
+          _address  = location['address'] ?? "Unknown Address";
+        });
+
+        debugPrint("📍 User live location updated: $_userLocation ($_username)");
+        _updateMap();
+      }
+    });
+  }
 
   void _listenToResponderLocation() async {
     LocationPermission permission = await Geolocator.checkPermission();
@@ -89,25 +112,25 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
   Future<void> _updateMap() async {
     if (_responderLocation == null || _userLocation == null) return;
 
-    // Always put both pins
+    // Add both markers
     setState(() {
       _markers = {
         Marker(
           markerId: const MarkerId('responder'),
           position: _responderLocation!,
-          infoWindow: const InfoWindow(title: 'Responder'),
+          infoWindow: const InfoWindow(title: 'Responder (You)'),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
         Marker(
           markerId: const MarkerId('user'),
           position: _userLocation!,
-          infoWindow: const InfoWindow(title: 'User Location'),
+          infoWindow: InfoWindow(title: _username ?? 'User'),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
       };
     });
 
-    // Zoom to fit both
+    // Fit camera bounds
     final bounds = LatLngBounds(
       southwest: LatLng(
         (_responderLocation!.latitude < _userLocation!.latitude)
@@ -130,18 +153,23 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
     await Future.delayed(const Duration(milliseconds: 400));
     _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
 
-    // Try Directions API
-    const apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+    // Call Google Directions API
+    const apiKey = 'YOUR_GOOGLE_MAPS_API_KEY'; // 🔑 replace with real
     final url =
-        'https://maps.googleapis.com/maps/api/directions/json?origin=${_responderLocation!.latitude},${_responderLocation!.longitude}&destination=${_userLocation!.latitude},${_userLocation!.longitude}&key=$apiKey';
+        'https://maps.googleapis.com/maps/api/directions/json'
+        '?origin=${_responderLocation!.latitude},${_responderLocation!.longitude}'
+        '&destination=${_userLocation!.latitude},${_userLocation!.longitude}'
+        '&mode=driving'
+        '&key=$apiKey';
 
     try {
       final response = await http.get(Uri.parse(url));
       final data = json.decode(response.body);
 
       if (data['status'] == "OK" && data['routes'].isNotEmpty) {
-        final points =
-        _decodePolyline(data['routes'][0]['overview_polyline']['points']);
+        final points = _decodePolyline(
+          data['routes'][0]['overview_polyline']['points'],
+        );
         setState(() {
           _polylines = {
             Polyline(
@@ -149,12 +177,12 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
               points: points,
               width: 5,
               color: Colors.blue,
-            )
+            ),
           };
         });
         debugPrint("✅ Route drawn between responder and user");
       } else {
-        // If API fails, draw straight line
+        // fallback line if no route found
         setState(() {
           _polylines = {
             Polyline(
@@ -163,16 +191,15 @@ class _LocationOfUserPageState extends State<LocationOfUserPage> {
               width: 4,
               color: Colors.red,
               patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-            )
+            ),
           };
         });
-        debugPrint("⚠️ No route found. Showing straight line.");
+        debugPrint("⚠️ Directions API returned no route.");
       }
     } catch (e) {
       debugPrint("❌ Directions API error: $e");
     }
   }
-
 
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> polyline = [];
