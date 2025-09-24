@@ -1,30 +1,40 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image/image.dart' as img;
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class UploadSelfDefenseImagesPage extends StatefulWidget {
   const UploadSelfDefenseImagesPage({super.key});
   @override
-  State<UploadSelfDefenseImagesPage> createState() => _UploadSelfDefenseImagesPageState();
+  State<UploadSelfDefenseImagesPage> createState() =>
+      _UploadSelfDefenseImagesPageState();
 }
 
-class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPage> {
+class _UploadSelfDefenseImagesPageState
+    extends State<UploadSelfDefenseImagesPage> {
+  // 🔑 Fill with your actual Cloudinary credentials
+  static const String kCloudName = 'dfop0muxq'; // your cloud name
+  static const String kUnsignedPreset = 'juantap_images'; // your unsigned preset
+  static const String kCloudFolder = 'self_defense_guides'; // folder
+
   final _title = TextEditingController();
-  final _desc  = TextEditingController();
+  final _desc = TextEditingController();
 
   final List<Uint8List> _images = [];
   final List<String> _imageNames = [];
   bool _isUploading = false;
 
-  static const int kMaxPickBytes = 8 * 1024 * 1024; // 8MB cap before compress
-  static const int kTargetWidth  = 1080;            // resize target
-  static const int kJpegQuality  = 75;              // 0..100
+  static const int kMaxPickBytes = 8 * 1024 * 1024; // 8MB cap pre-compress
+  static const int kTargetWidth = 1080; // resize target
+  static const int kJpegQuality = 75; // 0..100
 
+  /// Pick multiple images from gallery
   Future<void> _pickImages() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
@@ -57,12 +67,10 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
     setState(() {});
   }
 
-  /// Compress to JPEG bytes (kept from your version, but return bytes not base64)
+  /// Compress image before uploading
   Future<Uint8List> _compressToJpeg(Uint8List bytes) async {
     final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      throw 'Unsupported image';
-    }
+    if (decoded == null) throw 'Unsupported image';
     img.Image out = decoded;
     if (decoded.width > kTargetWidth) {
       out = img.copyResize(decoded, width: kTargetWidth);
@@ -71,50 +79,63 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
     return Uint8List.fromList(jpg);
   }
 
-  /// Upload compressed bytes to Firebase Storage and return the download URL
-  Future<String> _uploadToStorage(Uint8List jpgBytes, String origName) async {
-    // make a safe-ish filename
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('self_defense_images/$ts-$origName.jpg');
+  /// Upload a single image to Cloudinary and return secure URL
+  Future<String> _uploadToCloudinary(Uint8List jpgBytes, String filename) async {
+    final uri =
+    Uri.parse('https://api.cloudinary.com/v1_1/$kCloudName/image/upload');
 
-    final meta = SettableMetadata(
-      contentType: 'image/jpeg',
-      cacheControl: 'public,max-age=604800', // 7 days
-    );
+    final req = http.MultipartRequest('POST', uri)
+      ..fields['upload_preset'] = kUnsignedPreset
+      ..fields['folder'] = kCloudFolder
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        jpgBytes,
+        filename: filename,
+        contentType: MediaType('image', 'jpeg'),
+      ));
 
-    final snap = await ref.putData(jpgBytes, meta);
-    return await snap.ref.getDownloadURL();
+    final streamed = await req.send();
+    final res = await http.Response.fromStream(streamed);
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw 'Cloudinary upload failed (${res.statusCode}): ${res.body}';
+    }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final secureUrl = body['secure_url'] as String?;
+    if (secureUrl == null) throw 'No secure_url returned by Cloudinary';
+    return secureUrl;
   }
 
+  /// Compress + upload all picked images → save guide to Firebase
   Future<void> _save() async {
     if (_title.text.trim().isEmpty ||
         _desc.text.trim().isEmpty ||
         _images.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add title, description, and at least one image.')),
+        const SnackBar(
+            content: Text('Add title, description, and at least one image.')),
       );
       return;
     }
 
     setState(() => _isUploading = true);
     try {
-      // 1) compress & upload each image; collect download URLs
+      // Upload each image to Cloudinary
       final List<String> imageUrls = [];
       for (int i = 0; i < _images.length; i++) {
         final jpg = await _compressToJpeg(_images[i]);
-        final url = await _uploadToStorage(jpg, _imageNames[i]);
+        final url = await _uploadToCloudinary(jpg, _imageNames[i]);
         imageUrls.add(url);
       }
 
-      // 2) Save metadata + Storage URLs to Realtime Database
+      // Save guide metadata + Cloudinary URLs to Firebase
       await FirebaseDatabase.instance.ref('self_defense_guides').push().set({
-        'title'      : _title.text.trim(),
+        'title': _title.text.trim(),
         'description': _desc.text.trim(),
-        'images'     : imageUrls, // <-- list of HTTPS download URLs
+        'images': imageUrls, // list of Cloudinary URLs
         'uploaded_at': DateTime.now().toIso8601String(),
-        'type'       : 'images_only_storage',
+        'source': 'cloudinary',
       });
 
       if (!mounted) return;
@@ -141,7 +162,7 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Upload Self‑Defense (Images → Storage + RTDB)'),
+        title: const Text('Upload Self-Defense Guide'),
         backgroundColor: const Color(0xFF2A9D8F),
         foregroundColor: Colors.white,
       ),
@@ -182,8 +203,12 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.memory(_images[i],
-                            width: 120, height: 120, fit: BoxFit.cover),
+                        child: Image.memory(
+                          _images[i],
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                       Positioned(
                         right: 4,
@@ -195,7 +220,8 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
                             onTap: () => _removeAt(i),
                             child: const Padding(
                               padding: EdgeInsets.all(4.0),
-                              child: Icon(Icons.close, size: 16, color: Colors.white),
+                              child: Icon(Icons.close,
+                                  size: 16, color: Colors.white),
                             ),
                           ),
                         ),
@@ -208,8 +234,15 @@ class _UploadSelfDefenseImagesPageState extends State<UploadSelfDefenseImagesPag
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _isUploading ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2A9D8F),
+              ),
               child: _isUploading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
                   : const Text('Save Guide'),
             ),
           ],

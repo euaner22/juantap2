@@ -161,14 +161,30 @@ class _SelfDefenseGuidePageState extends State<SelfDefenseGuidePage> {
                           return ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: InkWell(
-                              onTap: () => _openUrl(url),
+                              onTap: () {
+                                // open full screen preview instead of url_launcher
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => Dialog(
+                                    insetPadding: EdgeInsets.all(16),
+                                    child: InteractiveViewer(
+                                      child: Image.network(
+                                        url,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) => const Center(
+                                          child: Icon(Icons.broken_image, size: 48),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                               child: Image.network(
                                 url,
                                 width: 120,
                                 height: 96,
                                 fit: BoxFit.cover,
-                                errorBuilder:
-                                    (_, __, ___) => Container(
+                                errorBuilder: (_, __, ___) => Container(
                                   color: Colors.grey.shade300,
                                   width: 120,
                                   height: 96,
