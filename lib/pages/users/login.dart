@@ -109,7 +109,7 @@ class _LoginPageState extends State<LoginPage> {
           Navigator.of(context).pop(); // close dialog
 
           if (role == 'admin') {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const admin()));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
           } else if (role == 'responder') {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ResponderDashboard()));
           } else {

@@ -1,74 +1,58 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/material.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'firebase_options.dart';
+
+// ✅ Import your pages
 import 'package:juantap/pages/admin/admin.dart';
 import 'package:juantap/pages/responders/responder.dart';
-import 'package:juantap/pages/users/call_page.dart';
+import 'package:juantap/pages/users/home.dart';
+import 'package:juantap/pages/users/login.dart';
+import 'package:juantap/pages/users/splash_screen.dart';
+import 'package:juantap/pages/users/signup.dart';
+import 'package:juantap/pages/users/edit_profile.dart';
+import 'package:juantap/pages/users/maps_location.dart';
 import 'package:juantap/pages/users/check_in.dart';
 import 'package:juantap/pages/users/contact_lists.dart';
 import 'package:juantap/pages/users/contact_lists_requests.dart';
-import 'package:juantap/pages/users/edit_profile.dart';
-import 'package:juantap/pages/users/home.dart';
-import 'package:juantap/pages/users/login.dart';
-import 'package:juantap/pages/users/maps_location.dart';
-import 'package:juantap/pages/users/signup.dart';
-import 'package:juantap/pages/users/splash_screen.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:juantap/pages/responders/edit_responder_profile.dart';
 
-// 👇 Add these for background service
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
 
-  // Initialize background service
-  await initializeService();
+  try {
+    if (kIsWeb) {
+      debugPrint("🌐 Running on Web — initializing Firebase Web manually...");
 
-  final app = Firebase.app();
-  debugPrint('Firebase project: ${app.options.projectId}');
-  debugPrint('Database URL:     ${app.options.databaseURL}');
-  debugPrint('Storage bucket:   ${app.options.storageBucket}');
-
-  // Explicit Storage instance
-  final storage = FirebaseStorage.instanceFor(bucket: 'juantap-db-2dbeb.appspot.com');
-  debugPrint('Explicit bucket:  ${storage.bucket}');
-
-  runApp(const JuanTap());
-}
-
-/// 🔧 Setup background service
-Future<void> initializeService() async {
-  final service = FlutterBackgroundService();
-
-  await service.configure(
-    androidConfiguration: AndroidConfiguration(
-      onStart: onStart,
-      autoStart: false, // starts only when user enables Voice Command
-      isForegroundMode: true,
-    ),
-    iosConfiguration: IosConfiguration(), // iOS has limited support
-  );
-}
-
-/// 🚨 Runs when background service starts
-@pragma('vm:entry-point')
-void onStart(ServiceInstance service) {
-  // Keep the service alive
-  if (service is AndroidServiceInstance) {
-    service.on("setAsForeground").listen((event) {
-      service.setAsForegroundService();
-    });
-
-    service.on("stopService").listen((event) {
-      service.stopSelf();
-    });
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: "AIzaSyB4lyiOI8bUh9QbjTAUD6B2fl62U9eu8ZU",
+          authDomain: "juantap-db-2dbeb.firebaseapp.com",
+          databaseURL: "https://juantap-db-2dbeb-default-rtdb.firebaseio.com",
+          projectId: "juantap-db-2dbeb",
+          storageBucket: "juantap-db-2dbeb.appspot.com",
+          messagingSenderId: "201901470099",
+          appId: "1:201901470099:web:bd254aa6d087968438b866",
+          measurementId: "G-M02NM47ELK",
+        ),
+      );
+      debugPrint("✅ Firebase Web initialized successfully");
+    } else {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      debugPrint("📱 Firebase initialized for Mobile/Desktop");
+    }
+  } catch (e, stack) {
+    debugPrint("🔥 Firebase init error: $e");
+    debugPrintStack(stackTrace: stack);
   }
 
-  // Here later you can hook continuous speech recognition
-  debugPrint("✅ Background Voice Service Started");
+  runApp(const JuanTap());
 }
 
 class JuanTap extends StatelessWidget {
@@ -77,21 +61,22 @@ class JuanTap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'JuanTap',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const AuthGate(),
+      home: kIsWeb ? const AdminDashboardPage() : const AuthGate(),
       routes: {
-        '/home': (context) => HomePage(),
-        '/login': (context) => LoginPage(),
-        '/registration': (context) => Registration(),
-        '/edit_profile': (context) => EditProfilePage(),
-        '/maps_location': (context) => MapsLocation(),
+        '/home': (context) => const HomePage(),
+        '/login': (context) => const LoginPage(),
+        '/registration': (context) => const Registration(),
+        '/edit_profile': (context) => const EditProfilePage(),
+        '/maps_location': (context) => const MapsLocation(),
         '/check_in': (context) => CheckInPage(),
-        '/contact_lists': (context) => ContactListPage(),
-        '/contact_lists_requests': (context) => ContactListsRequestsPage(),
-        '/admin': (context) => const admin(),
+        '/contact_lists': (context) =>  ContactListPage(),
+        '/contact_lists_requests': (context) =>  ContactListsRequestsPage(),
         '/responderDashboard': (context) => const ResponderDashboard(),
+        '/admin': (context) => const AdminDashboardPage(),
+        '/edit_responder_profile': (context) => const EditResponderProfilePage(),
       },
     );
   }
@@ -101,15 +86,21 @@ class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   Future<Widget> _determineHomeScreen(User user) async {
-    final roleSnapshot = await FirebaseDatabase.instance.ref('users/${user.uid}/role').get();
-    final role = roleSnapshot.value;
+    try {
+      final roleSnapshot =
+      await FirebaseDatabase.instance.ref('users/${user.uid}/role').get();
+      final role = roleSnapshot.value;
 
-    if (role == 'admin') {
-      return const admin();
-    } else if (role == 'responder') {
-      return const ResponderDashboard();
-    } else {
-      return const HomePage();
+      if (role == 'admin') {
+        return const AdminDashboardPage();
+      } else if (role == 'responder') {
+        return const ResponderDashboard();
+      } else {
+        return const HomePage();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error fetching user role: $e");
+      return const LoginPage();
     }
   }
 
@@ -123,13 +114,11 @@ class AuthGate extends StatelessWidget {
         } else if (snapshot.hasData) {
           return FutureBuilder<Widget>(
             future: _determineHomeScreen(snapshot.data!),
-            builder: (context, futureSnapshot) {
-              if (futureSnapshot.connectionState == ConnectionState.waiting) {
+            builder: (context, roleSnapshot) {
+              if (roleSnapshot.connectionState == ConnectionState.waiting) {
                 return const SplashScreen();
-              } else if (futureSnapshot.hasData) {
-                return futureSnapshot.data!;
               } else {
-                return const LoginPage();
+                return roleSnapshot.data ?? const LoginPage();
               }
             },
           );

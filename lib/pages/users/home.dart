@@ -482,71 +482,103 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   void _listenToContactRequests() {
     final uid = FirebaseAuth.instance.currentUser!.uid;
+    final ref = FirebaseDatabase.instance.ref('contact_requests/$uid');
 
-    FirebaseDatabase.instance
-        .ref('contact_requests/$uid')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.exists) {
-        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-        final List<Map<String, dynamic>> newNotifs = [];
+    ref.onValue.listen((event) {
+      if (!event.snapshot.exists) {
+        setState(() => _notifications = []);
+        return;
+      }
 
-        data.forEach((key, value) {
-          final req = Map<String, dynamic>.from(value);
+      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+      final List<Map<String, dynamic>> newNotifs = [];
+
+      data.forEach((key, value) {
+        final req = Map<String, dynamic>.from(value);
+        final senderUsername = req['senderUsername'] ?? 'Unknown User';
+        final status = req['status'] ?? 'pending';
+
+        if (status == 'pending') {
           newNotifs.add({
             'uid': key,
-            'username': req['senderUsername'],
+            'username': senderUsername,
+            'timestamp': req['timestamp'] ?? 0,
           });
-        });
+        }
+      });
 
-        setState(() {
-          _notifications = newNotifs;
-        });
-      } else {
-        setState(() {
-          _notifications = [];
-        });
-      }
+      // Sort newest first
+      newNotifs.sort((a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int));
+
+      setState(() {
+        _notifications = newNotifs;
+      });
     });
   }
+
   void _showNotificationMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => ListView.builder(
-        itemCount: _notifications.length,
-        itemBuilder: (context, index) {
-          final notif = _notifications[index];
-          return ListTile(
-            title: Text('${notif['username']}'),
-            subtitle: Text('wants to add you'),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.check, color: Colors.green),
-                  onPressed: () async {
-                    await _acceptRequest(notif['uid'], notif['username']);
-                    Navigator.pop(context);
-                  },
-                ),
-                IconButton(
-                  icon: Icon(Icons.close, color: Colors.red),
-                  onPressed: () async {
-                    await _declineRequest(notif['uid']);
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
+      builder: (_) {
+        if (_notifications.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Text(
+                'No pending requests',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
             ),
           );
-        },
-      ),
+        }
+
+        return ListView.builder(
+          itemCount: _notifications.length,
+          itemBuilder: (context, index) {
+            final notif = _notifications[index];
+            final username = notif['username'] ?? 'Unknown User';
+
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: const Color(0xFFEFFEF5),
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.person, color: Colors.white),
+                ),
+                title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('wants to add you as a contact'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.check_circle, color: Colors.green),
+                      onPressed: () async {
+                        await _acceptRequest(notif['uid'], username);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.cancel, color: Colors.red),
+                      onPressed: () async {
+                        await _declineRequest(notif['uid']);
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
+
   final DatabaseReference _contactsRef = FirebaseDatabase.instance.ref('contacts');
   final DatabaseReference _requestsRef = FirebaseDatabase.instance.ref('contact_requests');
 

@@ -14,7 +14,7 @@ allprojects {
 plugins {
     id("com.android.application") version "8.7.0" apply false
     id("org.jetbrains.kotlin.android") version "1.8.22" apply false // ✅ Match existing classpath
-    id("com.google.gms.google-services") version "4.4.2" apply false
+    id("com.google.gms.google-services") version "4.3.15" apply false
 }
 
 // ✅ Custom build directory structure
