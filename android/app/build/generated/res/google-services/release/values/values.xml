@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="firebase_database_url" translatable="false">https://juantap-db-2dbeb-default-rtdb.firebaseio.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">201901470099</string>
+    <string name="google_api_key" translatable="false">AIzaSyDAsMR9ccK6F2n4Jnx3NSAOph-LENrm6qg</string>
+    <string name="google_app_id" translatable="false">1:201901470099:android:47cf76cf64cc175638b866</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDAsMR9ccK6F2n4Jnx3NSAOph-LENrm6qg</string>
+    <string name="google_storage_bucket" translatable="false">juantap-db-2dbeb.firebasestorage.app</string>
+    <string name="project_id" translatable="false">juantap-db-2dbeb</string>
+</resources>

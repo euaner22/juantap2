@@ -18,7 +18,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
   List<_UserRow> _rows = [];
   bool _loading = true;
 
-  // 🔑 Random password generator
   String _generatePassword(int length) {
     const chars =
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#%&!';
@@ -47,7 +46,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
       }
 
       rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-
       setState(() {
         _rows = rows;
         _loading = false;
@@ -55,7 +53,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
     });
   }
 
-  // ✅ Filtered view
   List<_UserRow> get _filtered {
     final query = _queryCtrl.text.trim().toLowerCase();
     return _rows.where((r) {
@@ -84,7 +81,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
     }
   }
 
-  // ✅ Add Responder Dialog (auto role = responder)
   Future<void> _showAddResponderDialog() async {
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
@@ -94,27 +90,46 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Create Responder Account"),
+        backgroundColor: const Color(0xFFFAFCFF),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "Create Responder Account",
+          style: TextStyle(
+            color: Color(0xFF084C41),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: "Responder Name"),
+              decoration: const InputDecoration(
+                labelText: "Responder Name",
+                border: OutlineInputBorder(),
+              ),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: emailCtrl,
-              decoration: const InputDecoration(labelText: "Responder Email"),
+              decoration: const InputDecoration(
+                labelText: "Responder Email",
+                border: OutlineInputBorder(),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
           ],
         ),
         actions: [
           TextButton(
-            child: const Text("Cancel"),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
             onPressed: () => Navigator.pop(ctx),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E88E5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             child: const Text("Create"),
             onPressed: () async {
               final name = nameCtrl.text.trim();
@@ -127,7 +142,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 return;
               }
 
-              // ✅ Validate email format
               final emailPattern = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
               if (!emailPattern.hasMatch(email)) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -138,11 +152,8 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
 
               try {
                 final password = _generatePassword(10);
-                print("🟢 Generated Password: $password");
-
                 final auth = FirebaseAuth.instance;
 
-                // ✅ Check if email is already used
                 final methods = await auth.fetchSignInMethodsForEmail(email);
                 if (methods.isNotEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -151,15 +162,12 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                   return;
                 }
 
-                print("🟢 Creating Firebase Auth account...");
                 final userCred = await auth.createUserWithEmailAndPassword(
                   email: email,
                   password: password,
                 );
-
                 await userCred.user?.sendEmailVerification();
 
-                // ✅ Save new responder to /users node
                 await _usersRef.child(userCred.user!.uid).set({
                   "username": name,
                   "email": email,
@@ -168,9 +176,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                   "phone": "",
                 });
 
-                print("✅ Responder saved successfully with exact email: $email");
-
-                // ✅ Send account email via EmailJS
                 final success = await EmailResponderService.sendResponderAccountEmail(
                   email: email,
                   username: name,
@@ -178,27 +183,21 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                   role: role,
                 );
 
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Responder '$name' created ✅ Email sent!")),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Responder created, but email failed ❌")),
-                  );
-                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? "Responder '$name' created ✅ Email sent!"
+                          : "Responder created, but email failed ❌",
+                    ),
+                  ),
+                );
 
                 if (mounted) Navigator.pop(ctx);
-              } on FirebaseAuthException catch (e) {
-                print("🔥 FirebaseAuthException: ${e.code}");
+              } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("FirebaseAuth error: ${e.message}")),
+                  SnackBar(content: Text("Error: $e")),
                 );
-              } catch (e, stack) {
-                print("🔥 General Error: $e");
-                print(stack);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text("Error: $e")));
               }
             },
           ),
@@ -215,91 +214,168 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 260,
-                child: TextField(
-                  controller: _queryCtrl,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Search by name or email',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFC8F4E4),
+            Color(0xFFA7E2C9),
+            Color(0xFF7FD1AE),
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 🌿 Header + Add button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Manage Accounts",
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF084C41),
                   ),
-                  onChanged: (_) => setState(() {}),
                 ),
-              ),
-              const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: _roleFilter,
-                items: const [
-                  DropdownMenuItem(value: 'All', child: Text('All roles')),
-                  DropdownMenuItem(value: 'user', child: Text('User')),
-                  DropdownMenuItem(value: 'responder', child: Text('Responder')),
-                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                ],
-                onChanged: (v) => setState(() => _roleFilter = v ?? 'All'),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text("Add Responder"),
-                onPressed: _showAddResponderDialog,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: _UsersDataTable(
-                  rows: _filtered,
-                  onSuspend: (r) => _updateStatus(r, 'Suspended'),
-                  onActivate: (r) => _updateStatus(r, 'Active'),
-                  onDelete: _deleteUser,
-                  onResetPassword: (r) async {
-                    try {
-                      await FirebaseAuth.instance.sendPasswordResetEmail(email: r.email);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Password reset email sent to ${r.email} ✅')),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
-                      );
-                    }
-                  },
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E88E5), Color(0xFF38EF7D)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text(
+                      "Add Responder",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                    onPressed: _showAddResponderDialog,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // 🌿 Search + Filter
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4FFF9),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _queryCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Search by name or email',
+                        prefixIcon: Icon(Icons.search, color: Color(0xFF084C41)),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4FFF9),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: DropdownButton<String>(
+                    value: _roleFilter,
+                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF084C41)),
+                    dropdownColor: const Color(0xFFFAFCFF),
+                    underline: const SizedBox(),
+                    style: const TextStyle(color: Color(0xFF084C41)),
+                    items: const [
+                      DropdownMenuItem(value: 'All', child: Text('All Roles')),
+                      DropdownMenuItem(value: 'user', child: Text('User')),
+                      DropdownMenuItem(value: 'responder', child: Text('Responder')),
+                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                    ],
+                    onChanged: (v) => setState(() => _roleFilter = v ?? 'All'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // 🌿 Accounts Table
+            Expanded(
+              child: Card(
+                color: const Color(0xFFFAFCFF),
+                elevation: 6,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _UsersDataTable(
+                    rows: _filtered,
+                    onSuspend: (r) => _updateStatus(r, 'Suspended'),
+                    onActivate: (r) => _updateStatus(r, 'Active'),
+                    onDelete: _deleteUser,
+                    onResetPassword: (r) async {
+                      try {
+                        await FirebaseAuth.instance.sendPasswordResetEmail(email: r.email);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Password reset email sent to ${r.email} ✅')),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
+                      }
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-}
-
-// -------------------- Data Classes --------------------
-class _UserRow {
-  final String uid;
-  final String name;
-  final String email;
-  final String role;
-  final String status;
-
-  _UserRow({
-    required this.uid,
-    required this.name,
-    required this.email,
-    required this.role,
-    required this.status,
-  });
 }
 
 // -------------------- Data Table --------------------
@@ -320,21 +396,127 @@ class _UsersDataTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final totalUsers = rows.length;
+    final responders = rows.where((r) => r.role == 'responder').length;
+    final admins = rows.where((r) => r.role == 'admin').length;
+    final suspended = rows.where((r) => r.status == 'Suspended').length;
+
     return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: PaginatedDataTable(
-        header: const Text('Responder Accounts'),
-        rowsPerPage: 6,
-        columnSpacing: 20,
-        columns: const [
-          DataColumn(label: Text('Name')),
-          DataColumn(label: Text('Email')),
-          DataColumn(label: Text('Role')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Actions')),
-        ],
-        source: _UsersSource(rows, onSuspend, onActivate, onDelete, onResetPassword),
+      scrollDirection: Axis.horizontal, // ✅ allows horizontal scrolling
+      child: SizedBox(
+        width: 1200, // ✅ wider layout for table
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4EFFB),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildSummaryItem("Users", totalUsers, const Color(0xFF1E88E5)),
+                    _buildSummaryItem("Responders", responders, const Color(0xFF38EF7D)),
+                    _buildSummaryItem("Admins", admins, const Color(0xFF8E24AA)),
+                    _buildSummaryItem("Suspended", suspended, Colors.redAccent),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              PaginatedDataTable(
+                header: null,
+                rowsPerPage: 6,
+                columnSpacing: 80, // ✅ expanded horizontal space
+                horizontalMargin: 24,
+                headingRowHeight: 70,
+                dataRowMinHeight: 70,
+                dataRowMaxHeight: 80,
+                headingRowColor:
+                WidgetStateProperty.all(const Color(0xFFD7F9E9)),
+
+                columns: const [
+                  DataColumn(
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 38, vertical: 10),
+                      child: Text(
+                        'Name',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 38, vertical: 10),
+                      child: Text(
+                        'Email',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 38, vertical: 10),
+                      child: Text(
+                        'Role',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 38, vertical: 10),
+                      child: Text(
+                        'Status',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 38, vertical: 10),
+                      child: Text(
+                        'Actions',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+
+                source: _UsersSource(rows, onSuspend, onActivate, onDelete, onResetPassword),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildSummaryItem(String label, int value, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, color: color, size: 10),
+        const SizedBox(width: 6),
+        Text(
+          "$label: ",
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF084C41),
+          ),
+        ),
+        Text(
+          value.toString(),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -353,19 +535,42 @@ class _UsersSource extends DataTableSource {
     if (index >= rows.length) return null;
     final r = rows[index];
     return DataRow(cells: [
-      DataCell(Text(r.name.isEmpty ? '(Unnamed)' : r.name)),
-      DataCell(Text(r.email)),
-      DataCell(Text(r.role)),
-      DataCell(Text(r.status)),
+      DataCell(Padding(padding: const EdgeInsets.symmetric(horizontal: 38), child: Text(r.name.isEmpty ? '(Unnamed)' : r.name))),
+      DataCell(Padding(padding: const EdgeInsets.symmetric(horizontal: 38), child: Text(r.email))),
+      DataCell(Padding(padding: const EdgeInsets.symmetric(horizontal: 38), child: Text(r.role))),
+      DataCell(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 38),
+        child: Text(
+          r.status,
+          style: TextStyle(
+            color: r.status == 'Active' ? Colors.green : Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      )),
       DataCell(Row(
         children: [
-          IconButton(icon: const Icon(Icons.key), tooltip: 'Reset Password', onPressed: () => onResetPassword(r)),
           IconButton(
-            icon: Icon(r.status == 'Active' ? Icons.pause_circle_outline : Icons.play_circle_outline),
-            tooltip: r.status == 'Active' ? 'Suspend' : 'Activate',
-            onPressed: () => r.status == 'Active' ? onSuspend(r) : onActivate(r),
+            icon: const Icon(Icons.key, color: Color(0xFF1E88E5)),
+            tooltip: 'Reset Password',
+            onPressed: () => onResetPassword(r),
           ),
-          IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => onDelete(r)),
+          IconButton(
+            icon: Icon(
+              r.status == 'Active'
+                  ? Icons.pause_circle_outline
+                  : Icons.play_circle_outline,
+              color: r.status == 'Active' ? Colors.orange : Colors.green,
+            ),
+            tooltip: r.status == 'Active' ? 'Suspend' : 'Activate',
+            onPressed: () =>
+            r.status == 'Active' ? onSuspend(r) : onActivate(r),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            tooltip: 'Delete User',
+            onPressed: () => onDelete(r),
+          ),
         ],
       )),
     ]);
@@ -377,4 +582,21 @@ class _UsersSource extends DataTableSource {
   int get rowCount => rows.length;
   @override
   int get selectedRowCount => 0;
+}
+
+// -------------------- Data Model --------------------
+class _UserRow {
+  final String uid;
+  final String name;
+  final String email;
+  final String role;
+  final String status;
+
+  _UserRow({
+    required this.uid,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.status,
+  });
 }

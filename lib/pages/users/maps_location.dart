@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart' as loc;
 import 'package:firebase_database/firebase_database.dart';
 import 'package:audioplayers/audioplayers.dart'; // ✅ import
+import 'package:tflite_flutter/tflite_flutter.dart';
 
 class MapsLocation extends StatefulWidget {
   const MapsLocation({super.key});
@@ -14,6 +15,10 @@ class MapsLocation extends StatefulWidget {
 
 class _MapsLocationState extends State<MapsLocation> {
   final loc.Location _location = loc.Location();
+  Interpreter? _interpreter;
+  bool _modelLoaded = false;
+
+
   GoogleMapController? _mapController;
   LatLng? _userPosition;
   bool _isPermissionGranted = false;
@@ -34,6 +39,7 @@ class _MapsLocationState extends State<MapsLocation> {
     super.initState();
     _initializeLocation();
     _listenToDangerZones();
+    _loadRiskModel(); // 👈 add this line
 
     _location.onLocationChanged.listen((newLoc) {
       if (_isPermissionGranted &&
@@ -46,6 +52,51 @@ class _MapsLocationState extends State<MapsLocation> {
         _checkIfInDangerZone(newPos);
       }
     });
+  }
+  Future<double> _predictRisk(LatLng point, {int reports = 1, double severity = 0.3}) async {
+    if (_interpreter == null) return 0.0;
+
+    final now = DateTime.now().hour.toDouble();
+    var input = [
+      [point.latitude, point.longitude, reports.toDouble(), severity, now]
+    ];
+    var output = List.filled(1, 0.0).reshape([1, 1]);
+
+    _interpreter!.run(input, output);
+    double risk = output[0][0];
+    print("🔍 Predicted risk at ${point.latitude}, ${point.longitude} → $risk");
+    return risk;
+  }
+  void _showSafeRoute(List<LatLng> routePoints) {
+    setState(() {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('safe_route'),
+          points: routePoints,
+          color: Colors.green,
+          width: 6,
+        ),
+      };
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        backgroundColor: Colors.green,
+        content: Text('✅ A safer route has been suggested on your map.'),
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
+
+  Future<void> _loadRiskModel() async {
+    try {
+      _interpreter = await Interpreter.fromAsset('models/route_risk_model.tflite');
+      setState(() => _modelLoaded = true);
+      print('✅ ML model loaded successfully.');
+    } catch (e) {
+      print('❌ Failed to load model: $e');
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -187,7 +238,9 @@ class _MapsLocationState extends State<MapsLocation> {
     });
   }
 
-  void _checkIfInDangerZone(LatLng userPos) {
+  void _checkIfInDangerZone(LatLng userPos) async {
+    if (!_modelLoaded) return;
+
     for (var zoneEntry in _dangerZones.entries) {
       final zone = Map<String, dynamic>.from(zoneEntry.value);
       final zoneCenter = LatLng(zone["lat"], zone["lng"]);
@@ -196,13 +249,12 @@ class _MapsLocationState extends State<MapsLocation> {
       final distance = _calculateDistance(userPos, zoneCenter);
 
       if (distance <= zoneRadius) {
-        // ✅ Play alarm in loop
         _playAlarm();
 
-        // ✅ Use most recent report if available
         final reports = (zone["reports"] is Map)
             ? Map<String, dynamic>.from(zone["reports"] as Map)
             : <String, dynamic>{};
+
         String message = "You are inside a danger zone!";
         if (reports.isNotEmpty) {
           final lastReport = reports.entries.last.value;
@@ -210,13 +262,47 @@ class _MapsLocationState extends State<MapsLocation> {
         }
 
         _showDangerAlert(zone["name"], message);
-        _drawSafePath(userPos, zoneCenter, zoneRadius);
+
+        // 🔥 Compute and show ML-based safe route
+        final safeRoute = await _computeSafeRoute(userPos, zoneCenter);
+        _showSafeRoute(safeRoute);
+
         break;
       } else {
         setState(() => _polylines.clear());
       }
     }
   }
+  Future<List<LatLng>> _computeSafeRoute(LatLng start, LatLng dangerCenter) async {
+    // ✅ Create candidate directions (N, S, E, W, NE, NW, SE, SW)
+    final double offset = 0.002; // ~200m
+    final candidates = [
+      LatLng(start.latitude + offset, start.longitude), // North
+      LatLng(start.latitude - offset, start.longitude), // South
+      LatLng(start.latitude, start.longitude + offset), // East
+      LatLng(start.latitude, start.longitude - offset), // West
+      LatLng(start.latitude + offset, start.longitude + offset), // NE
+      LatLng(start.latitude + offset, start.longitude - offset), // NW
+      LatLng(start.latitude - offset, start.longitude + offset), // SE
+      LatLng(start.latitude - offset, start.longitude - offset), // SW
+    ];
+
+    double minRisk = double.infinity;
+    LatLng safestPoint = start;
+
+    // ✅ Evaluate risk for each candidate
+    for (var point in candidates) {
+      final risk = await _predictRisk(point, reports: 3, severity: 0.5);
+      if (risk < minRisk) {
+        minRisk = risk;
+        safestPoint = point;
+      }
+    }
+
+    // ✅ Return the route (user → safest point)
+    return [start, safestPoint];
+  }
+
 
   Future<void> _playAlarm() async {
     await _audioPlayer.stop(); // stop if already playing
